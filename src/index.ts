@@ -1,3 +1,4 @@
+import { diagLog } from './diagnostics';
 
 import './style.css'
 
@@ -160,19 +161,66 @@ $('#reset-gyro').on('click', async () => {
   basis = null;
 });
 
+
 $('#connect').on('click', async () => {
   if (conn) {
+    diagLog('DISCONNECT_REQUESTED');
+
     conn.disconnect();
     conn = null;
-  } else {
+
+    diagLog('DISCONNECTED');
+    return;
+  }
+
+  try {
+    diagLog('GAN_CONNECTION_REQUESTED');
+
     conn = await connectGanCube(customMacAddressProvider);
-    conn.events$.subscribe(handleCubeEvent);
+
+    diagLog('GAN_CONNECTION_SUCCESS', {
+      deviceName: conn.deviceName,
+      deviceMAC: conn.deviceMAC
+    });
+
+    conn.events$.subscribe({
+      next: handleCubeEvent,
+      error: error => {
+        diagLog('GAN_EVENT_STREAM_ERROR', {
+          message: String(error)
+        });
+      },
+      complete: () => {
+        diagLog('GAN_EVENT_STREAM_COMPLETED');
+      }
+    });
+
+    diagLog('REQUEST_HARDWARE');
     await conn.sendCubeCommand({ type: "REQUEST_HARDWARE" });
+
+    diagLog('REQUEST_FACELETS');
     await conn.sendCubeCommand({ type: "REQUEST_FACELETS" });
+
+    diagLog('REQUEST_BATTERY');
     await conn.sendCubeCommand({ type: "REQUEST_BATTERY" });
+
     $('#deviceName').val(conn.deviceName);
     $('#deviceMAC').val(conn.deviceMAC);
     $('#connect').html('Disconnect');
+
+    diagLog('INITIALIZATION_COMPLETED');
+
+  } catch (error) {
+    diagLog('GAN_CONNECTION_FAILED', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    console.error('[APP-BLE] CONNECTION_FAILED', error);
+
+    conn = null;
+    $('#connect').html('Connect');
   }
 });
 
